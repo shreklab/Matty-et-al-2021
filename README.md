@@ -29,4 +29,4 @@ I used the following software for analysis and figure production:
   
 ## Contact
   
-If you are having substantial issues or have questions about the code, please contact jess.allison.haley at gmail.com.
+If you are having substantial issues or have questions about the code, please contact jahaley at ucsd.edu.
