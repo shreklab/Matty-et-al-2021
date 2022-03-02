@@ -1,5 +1,5 @@
 % This code analyzes tracking videos for 
-% Figure 2 of Matty et al (2021)
+% Figure 2 of Matty et al (2022)
 %
 % Created by Jessica Haley
 % 8/9/2021
@@ -11,12 +11,10 @@ clear
 close all
 
 addpath(genpath('Z:\jhaley\analysis'))
-% addpath(genpath('Z:\jhaley\experiments\behavior'))
-% addpath(genpath('F:\EuniceData'))
-
 dataPath = 'Z:\jhaley\analysis\Eunice\';
 figurePath = 'Z:\jhaley\analysis\Eunice\Figures\';
 analysisPath = 'Z:\jhaley\analysis\Eunice\Analysis\';
+radiusFitPath = 'Z:\jhaley\analysis\Eunice\RadiusFit\';
 
 %% Get File Names for Analysis
 
@@ -50,16 +48,22 @@ end
 
 numExp = length(videoFile); % # experiments
 frameRate = 3; % frame rate
-wormLabScale = ones(numExp,1); wormLabScale(1:9) = 32.37; % arbitrary scale used in wormlab
-xPix = 1024; yPix = 1024;
+xPix = 1024; yPix = 1024; % frame size (pixels)
 
-% 2 cameras were used in these experiments. Files are labeled #f or #s to 
-% denote which setup was used for each video. Scale bars will be calculated
-% seperately for each camera.
-camera = zeros(numExp,1); % 0 = s, 1 = f
+% 2 cameras were used in these experiments. Files are labeled #f or #s
+% to denote which setup was used for each video. 
+% Scale bars will be calculated seperately for each camera.
+camera = nan(numExp,1); % 0 = s, 1 = f
 for i = 1:numExp
-    camera(i) = isempty(strfind(videoFile{i},'f_0'));
+    if contains(videoFile{i},'s_0')
+        camera(i) = 0;
+    elseif contains(videoFile{i},'f_0')
+        camera(i) = 1;
+    end
 end
+% Correct for poor file naming
+camera(contains(videoFile,'wf_cu_d_s1_061617.avi') | ...
+    contains(videoFile,'fd_nocu_d_s3_062017.avi')) = 0;
 
 %% Get Video Info, Mask Sharpie/Shadow Marks, and Get Scale
 
@@ -83,7 +87,10 @@ parfor i = 1:numExp
     % Get video object, # of frames, and first frame
     vidObject = VideoReader(videoFile{i});
     numFrames(i) = vidObject.NumFrames;
-    firstFrame = rgb2gray(read(vidObject,1));
+    firstFrame = read(vidObject,1);
+    if size(firstFrame,3) == 3
+        firstFrame = rgb2gray(firstFrame);
+    end
     
     % Use histogram to get threshold for image
     [counts,~] = imhist(firstFrame,256);
@@ -115,10 +122,17 @@ parfor i = 1:numExp
     if isempty(m)
         % If the line is not dark enough, increase the threshold to get a 
         % thicker line that spans the whole plate
-        if strcmp(videoFile{i},'fd_cu_nod_5s_053117.avi')
+        if strcmp(videoFile{i},'fd_cu_nod_5s_053117.avi') || ...
+                strcmp(videoFile{i},'2022-01-11_15-36-42_1.avi')
             firstFrameBW = imbinarize(firstFrame,thresh*1.25);
         elseif strcmp(videoFile{i},'fd_cu_d_2f_052517.avi')
             firstFrameBW = imbinarize(firstFrame,thresh*1.35);
+        elseif strcmp(videoFile{i},'2022-01-11_14-43-32_1.avi')
+            firstFrameBW = imbinarize(firstFrame,thresh*1.3);
+        elseif strcmp(videoFile{i},'2022-01-11_16-28-00_2.avi')
+            firstFrameBW = imbinarize(firstFrame,thresh*0.95);
+        elseif strcmp(videoFile{i},'2022-01-11_17-35-03_2.avi')
+            firstFrameBW = imbinarize(firstFrame,thresh*1.1);
         else
             firstFrameBW = imbinarize(firstFrame,thresh*1.5);
         end
@@ -168,6 +182,17 @@ parfor i = 1:numExp
     yc = -.5*a(2);
     plateRadii(i)  =  sqrt((a(1)^2+a(2)^2)/4-a(3));
     plateCenters(i,:) = -0.5*a(1:2);
+    
+    % Save plot to check fit accuracy
+    
+    figure;
+    hold on
+    imshow(arcMask + lineMask)
+    try
+        drawpoint('Position',flip(plateCenters(i,:)),'Color','r');
+    end
+    saveas(gcf,[radiusFitPath,videoFile{i}(1:end-4),'.jpg'])
+    close(gcf)
 end
 numFrame = max(numFrames);
 
@@ -224,21 +249,30 @@ scaleRadiusCm = scaleRadiusMm/10;
 
 % Some plates did not have enough contrast in the line to get a good fit
 % for the plate. These will be excluded for determining the scaling
-badFit = true(size(camera)); 
-badFit([7,17,19,25,28,32,34,42]) = 0;
+badFitFileNames = {'fd_cu_d_1f_062017.avi','fd_cu_nod_5s_053117.avi',...
+    'fd_nocu_d_6f_052317.avi','fd_nocu_d_s3_062017.avi',...
+    'wf_cu_nod_2f_062017.avi','wf_nocu_d_3f_061517.avi',...
+    'wf_nocu_d_5f_052317.avi','wf_nocu_d_7f_052317.avi',...
+    'wf_d_cu_1f_061417.avi'};
+badFit = true(size(camera));
+for i = 1:length(badFitFileNames)
+    ind = contains(videoFile,badFitFileNames{i});
+    badFit(ind) = 0;
+end
+badFit(isnan(plateRadii)) = 0;
 
 % Calculate scale of each camera (cm/px)
 scalePx = [median(plateRadii(badFit & camera==0)),...
-    median(plateRadii(badFit & camera==1))];
-scaleCm = scaleRadiusCm./scalePx; % cm/px
+    median(plateRadii(badFit & camera==1))]; % median plate radii (px)
 scaleExpPx = camera; 
 scaleExpPx(camera==0) = scalePx(1); scaleExpPx(camera==1) = scalePx(2);
-scaleExpCm = scaleRadiusCm./scaleExpPx; % cm/px
+scaleCm = scaleRadiusCm./scalePx; % camera scaling (cm/px)
+scaleExpCm = scaleRadiusCm./scaleExpPx; % camera scaling (cm/px)
 
 %% Save experiment info in a table
 
 expNum = [1:numExp]';
-info = table(expNum,hunger,odor,videoFile,camera,wormLabFile,wormLabScale,...
+info = table(expNum,hunger,odor,videoFile,camera,wormLabFile,...
     numFrames,plateRadii,plateCenters,lineOrients,scaleExpPx,scaleExpCm);
 
 %% Load X,Y Positions from Exported .xls Files from WormLab
@@ -253,7 +287,7 @@ for i = 1:numExp
     if missingTime > 0
         temp = [temp;nan(missingTime,size(temp,2))];
     end
-    wormLabRaw = [wormLabRaw,temp(1:numFrame,3:end)./wormLabScale(i)];
+    wormLabRaw = [wormLabRaw,temp(1:numFrame,3:end)];
     wormLabNumTracks(i) = size(wormLabRaw,2);
 end
 wormLabNumTracks = [0;wormLabNumTracks./2]; % edges of tracks in each file
@@ -459,6 +493,55 @@ analysis.tracksCum = tracksCum;
 analysis.crossingsCum = crossingsCum;
 analysis.crossingsCumFrac = crossingsCumFrac;
 
+%% Calculate cumulative tracks going forward and reverse through the line (15 min bins)
+
+distThreshold = 0.2; % distance from line (Cm)
+
+trackStarts = [1;1+find(diff(data.track))]; % indices of the first frame for each track
+trackEnds = [trackStarts(2:end)-1;size(data,1)]; % indices of the last frame for each track
+trackDataStart = data(trackStarts,:);
+trackDataEnd = data(trackEnds,:);
+
+% Barrier crossings towards and away from Diacetyl
+forwardCross = trackDataEnd(trackDataEnd.lineDistanceCm < 0 & ...
+    trackDataEnd.lineDistanceCm > -distThreshold & ...
+    trackDataStart.lineDistanceCm < -distThreshold,:); 
+reverseCross = trackDataEnd(trackDataEnd.lineDistanceCm > 0 & ...
+    trackDataEnd.lineDistanceCm < distThreshold & ...
+    trackDataStart.lineDistanceCm > distThreshold,:);
+
+timePoints = [15;30;45];
+numTimeBins = length(timePoints);
+crossingsForwardCum = zeros(numExp,numTimeBins);
+crossingsReverseCum = zeros(numExp,numTimeBins);
+for i = 1:numExp
+    for j = 1:numTimeBins
+        % Get cumulative sum of unique tracks ending on the left side of 
+        % the line (i.e. moving forward)
+        crossingsForwardCum(i,j) = sum(forwardCross.expNum == i & ...
+            forwardCross.frame <= timePoints(j)*60*frameRate);
+        
+        % Get cumulative sum of unique tracks ending on the right side of 
+        % the line (i.e. moving reverse)
+        crossingsReverseCum(i,j) = sum(reverseCross.expNum == i & ...
+            reverseCross.frame <= timePoints(j)*60*frameRate);
+    end
+end
+
+crossingsNetCum = crossingsForwardCum - crossingsReverseCum;
+crossingsEventsCum = crossingsForwardCum + crossingsReverseCum;
+crossingsForwardCumFrac = crossingsForwardCum./info.maxWorms;
+crossingsReverseCumFrac = crossingsReverseCum./info.maxWorms;
+crossingsNetCumFrac = crossingsNetCum./info.maxWorms;
+
+% Add data to table
+analysis.crossingsForwardCum = crossingsForwardCum;
+analysis.crossingsReverseCum = crossingsReverseCum;
+analysis.crossingsNetCum = crossingsNetCum;
+analysis.crossingsForwardCumFrac = crossingsForwardCumFrac;
+analysis.crossingsReverseCumFrac = crossingsReverseCumFrac;
+analysis.crossingsNetCumFrac = crossingsNetCumFrac;
+
 %% Calculate summary statistics (mean + std) across conditions
 
 numExpPerCondition = nan(length(hungerFolders),length(odorFolders));
@@ -508,6 +591,39 @@ for j = 1:length(odorFolders)
     writetable(prismTable,[figurePath,'CumalitiveCrossings_',odorFolders{j},'.xlsx']);
 end
 
+for j = 1:length(odorFolders)
+    prismTable = table(timePoints);
+    for i = 1:length(hungerFolders)
+        % Get indices and number of experiments matching hunger & odor condition
+        ind = find(strcmp(info.hunger,hungerFolders{i}) & ...
+            strcmp(info.odor,odorFolders{j}));
+        prismTable.(hungerFolders{i}) = crossingsNetCumFrac(ind,:)';
+    end
+    writetable(prismTable,[figurePath,'CumalitiveNetCrossings_',odorFolders{j},'.xlsx']);
+end
+
+for j = 1:length(odorFolders)
+    prismTable = table(timePoints);
+    for i = 1:length(hungerFolders)
+        % Get indices and number of experiments matching hunger & odor condition
+        ind = find(strcmp(info.hunger,hungerFolders{i}) & ...
+            strcmp(info.odor,odorFolders{j}));
+        prismTable.(hungerFolders{i}) = crossingsForwardCumFrac(ind,:)';
+    end
+    writetable(prismTable,[figurePath,'CumalitiveForwardCrossings_',odorFolders{j},'.xlsx']);
+end
+
+for j = 1:length(odorFolders)
+    prismTable = table(timePoints);
+    for i = 1:length(hungerFolders)
+        % Get indices and number of experiments matching hunger & odor condition
+        ind = find(strcmp(info.hunger,hungerFolders{i}) & ...
+            strcmp(info.odor,odorFolders{j}));
+        prismTable.(hungerFolders{i}) = crossingsReverseCumFrac(ind,:)';
+    end
+    writetable(prismTable,[figurePath,'CumalitiveReverseCrossings_',odorFolders{j},'.xlsx']);
+end
+
 %% Export p(location) and velocity for Molly to graph in Prism
 
 for j = 1:length(odorFolders)
@@ -536,7 +652,7 @@ end
 
 writetable(info,[figurePath,'info.xlsx']);
 writetable(analysis,[figurePath,'analysis.xlsx']);
-        
+
 %% Plot Colors
 
 blue = [0,144,178]/255;
@@ -622,9 +738,9 @@ parfor expNum = 1:numExp
         'Color',cyan,'LineWidth',5)
     
     % Plot edge of the plate in black
-    p = nsidedpoly(1000, 'Center', [plateCenters(expNum,2),xPix-plateCenters(expNum,1)],...
-        'Radius', plateRadii(expNum));
-    plot(p,'FaceAlpha',0,'LineWidth',2)
+%     p = nsidedpoly(1000, 'Center', [plateCenters(expNum,2),xPix-plateCenters(expNum,1)],...
+%         'Radius', plateRadii(expNum));
+%     plot(p,'FaceAlpha',0,'LineWidth',2)
     
     % Plot tracks colored by time
     for j = 1:length(expTracks)
@@ -680,7 +796,7 @@ close(gcf);
 
 %% Create Figure Supplement for P(Location)
 
-expNum = 27;
+expNum = find(contains(videoFile,'fd_cu_d_4f_053117.avi'));
 
 [~,expName,~] = fileparts(wormLabFile{expNum});
 vidNum = find(contains(videoFile,expName));
@@ -748,7 +864,7 @@ close(gcf);
 
 %% Create Figure Supplement for Velocity
 
-expNum = 27;
+expNum = find(contains(videoFile,'fd_cu_d_4f_053117.avi'));
 
 [~,expName,~] = fileparts(wormLabFile{expNum});
 vidNum = find(contains(videoFile,expName));
@@ -794,11 +910,19 @@ close(gcf);
 
 %% Create Figure Supplement for Barrier Crossings
 
-expNum = 27;
+expNum = find(contains(videoFile,'fd_cu_d_4f_053117.avi'));
 
 [~,expName,~] = fileparts(wormLabFile{expNum});
 vidNum = find(contains(videoFile,expName));
-expTracks = unique(data.track(data.expNum == expNum));
+expTracksAll = unique(data.track(data.expNum == expNum));
+expTracks = unique([forwardCross.track(forwardCross.expNum == expNum);...
+    reverseCross.track(reverseCross.expNum == expNum)]);
+for i = 1:length(expTracks)
+    ind = find(expTracksAll == expTracks(i));
+    if ~isempty(ind)
+        expTracksAll(ind) = [];
+    end
+end
 c = jet(length(expTracks));
 rng(5)
 colorOrder = randperm(length(c));
@@ -818,11 +942,24 @@ p = nsidedpoly(1000, 'Center', [plateCenters(expNum,2),xPix-plateCenters(expNum,
     'Radius', plateRadii(expNum));
 plot(p,'FaceAlpha',0,'LineWidth',2)
 
-% Plot tracks with unique color
+% Plot all tracks in gray
+for j = 1:length(expTracksAll)
+    ind = find(data.track == expTracksAll(j));
+    if ~isempty(ind)
+        plot(data.xPosition(ind),data.yPosition(ind),...
+            'Color',[0.7,0.7,0.7],'LineWidth',0.7);
+%         scatter(data.xPosition(ind(1)),data.yPosition(ind(1)),100,...
+%             'MarkerFaceColor',[0.7,0.7,0.7],...
+%             'MarkerEdgeColor',[0.7,0.7,0.7]);
+%         text(data.xPosition(ind(1)),data.yPosition(ind(1)),num2str(j+length(expTracks)),...
+%             'HorizontalAlignment','center','VerticalAlignment','middle',...
+%             'Color','w','FontSize',6,'FontWeight','bold');
+    end
+end
+
+% Plot forward and reverse tracks with unique color
 for j = 1:length(expTracks)
-    ind = find(data.track == expTracks(j) & ...
-        data.frame >= 0*frameRate*60 & ...
-        data.frame <= 15*frameRate*60);
+    ind = find(data.track == expTracks(j));
     if ~isempty(ind)
         plot(data.xPosition(ind),data.yPosition(ind),...
             'Color',c(colorOrder(j),:),'LineWidth',0.7);
@@ -832,20 +969,6 @@ for j = 1:length(expTracks)
         text(data.xPosition(ind(1)),data.yPosition(ind(1)),num2str(j),...
             'HorizontalAlignment','center','VerticalAlignment','middle',...
             'Color','w','FontSize',6,'FontWeight','bold');
-    end
-end
-% Label tracks
-for j = 1:length(expTracks)
-    ind = find(data.track == expTracks(j) & ...
-        data.frame >= 0*frameRate*60 & ...
-        data.frame <= 15*frameRate*60);
-    if ~isempty(ind)
-        scatter(data.xPosition(ind(1)),data.yPosition(ind(1)),100,...
-            'MarkerFaceColor',c(colorOrder(j),:),...
-            'MarkerEdgeColor',c(colorOrder(j),:));
-        text(data.xPosition(ind(1)),data.yPosition(ind(1)),num2str(j),...
-            'HorizontalAlignment','center','VerticalAlignment','middle',...
-            'Color','w','FontSize',6,'FontWeight','bold','FontName','Arial');
     end
 end
 
