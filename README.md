@@ -21,12 +21,11 @@ I used the following software for analysis and figure production:
 
 ## Links
 
-- Paper: 
-- Data Repository: 
+- Paper: https://www.biorxiv.org/content/10.1101/156109v2
 - Git Repository: https://github.com/shreklab/Matty-et-al-2022
-- Related projects: 
+- Related projects: https://github.com/shreklab
 
   
 ## Contact
   
-If you are having substantial issues or have questions about the code, please contact jahaley at ucsd.edu.
+If you are having issues or have questions about the code, please contact jahaley at ucsd.edu.
