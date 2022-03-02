@@ -16,7 +16,7 @@ I used the following software for analysis and figure production:
 ## File List
 
 <b>Pool all experiments and plot in MATLAB</b>
-- `trackingAnalysis.m` : accumulates all of the midpoints from WormLab and video files for each experiment included in Figure; produces all of the graphs for Figure 2 and Figure Supplements 3 and 4, saves data used in figures as `.xlsx` for statistics
+- `trackingAnalysis.m` : accumulates all of the midpoints from WormLab and video files for each experiment; produces all of the graphs for Figure 2 and Figure Supplements 3 and 4, saves data used in figures as `.xlsx` for statistics.
 
 
 ## Links
