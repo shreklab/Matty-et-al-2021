@@ -1,5 +1,5 @@
-# matty_et_al_2021
-> Analysis package for the paper Matty et al. (2021).
+# matty_et_al_2022
+> Analysis package for the paper Matty et al. (2022).
 
 This code was written and used to analyze tracks of midpoints of populations of *C. elegans* in a sensory integration assay. Most of this code is only useful for this particular set of experiments and will need to be adapted for other uses.
 
@@ -23,7 +23,7 @@ I used the following software for analysis and figure production:
 
 - Paper: 
 - Data Repository: 
-- Git Repository: https://github.com/shreklab/Matty-et-al-2021
+- Git Repository: https://github.com/shreklab/Matty-et-al-2022
 - Related projects: 
 
   
